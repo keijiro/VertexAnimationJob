@@ -256,9 +256,10 @@ public sealed class Tunnel : MonoBehaviour
 
         public void Execute(int i)
         {
-            var ring = i / resolution.x;
-            var phi = i - ring * resolution.x;
-            var polar = math.float2(phi, ring) / resolution;
+            var polar = math.float2(
+                math.frac((float)i / resolution.x),
+                (float)(i / resolution.x) / resolution.y
+            );
 
             var npos1 = (polar + math.float2(0, noiseOffs.x)) * noiseRepeat;
             var npos2 = (polar + math.float2(0, noiseOffs.y)) * noiseRepeat;
