@@ -1,3 +1,8 @@
+//
+// Tunnel - An example of vertex animation with C# Job System and New Mesh API
+// https://github.com/keijiro/VertexAnimationJob
+//
+
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.Collections;
@@ -5,17 +10,17 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
+[ExecuteInEditMode, RequireComponent(typeof(MeshRenderer))]
 public sealed class Tunnel : MonoBehaviour
 {
     #region Editable attributes
 
-    [SerializeField] int2 _resolution = math.int2(64, 256);
+    [SerializeField] int2 _resolution = math.int2(128, 512);
     [SerializeField] float _radius = 1;
-    [SerializeField] float _depth = 100;
-    [SerializeField] int _noiseRepeat = 10;
+    [SerializeField] float _depth = 10;
+    [SerializeField] int _noiseRepeat = 6;
     [SerializeField] float _noiseAmplitude = 0.1f;
-    [SerializeField] float _noiseAnimation = 1.0f;
-    [SerializeField] Material _material = null;
+    [SerializeField] float _noiseAnimation = 0.5f;
 
     void OnValidate()
     {
@@ -27,10 +32,7 @@ public sealed class Tunnel : MonoBehaviour
 
     #endregion
 
-    #region Local objects
-
-    MeshFilter _meshFilter;
-    MeshRenderer _meshRenderer;
+    #region Internal objects
 
     Mesh _mesh;
     NativeArray<int> _indexBuffer;
@@ -40,53 +42,81 @@ public sealed class Tunnel : MonoBehaviour
 
     #region MonoBehaviour implementation
 
-    void Start()
+    void OnDisable()
     {
-        _mesh = new Mesh();
-
-        _meshFilter = gameObject.AddComponent<MeshFilter>();
-        _meshFilter.sharedMesh = _mesh;
-
-        _meshRenderer = gameObject.AddComponent<MeshRenderer>();
-        _meshRenderer.sharedMaterial = _material;
+        // Required in edit mode.
+        ReleaseInternals();
     }
 
     void OnDestroy()
     {
-        if (_mesh != null) Destroy(_mesh);
-        DisposeBuffers();
+        ReleaseInternals();
     }
 
     void Update()
     {
+        SetUpInternals();
+
         if (_indexBuffer.Length != IndexCount)
         {
-            // Dispose the current mesh.
+            // Mesh reallocation and reconstruction
             _mesh.Clear();
             DisposeBuffers();
-
-            // Mesh reallocation and reconstruction
             AllocateBuffers();
             UpdateVertexBuffer();
             InitializeMesh();
-            UpdateMeshBounds();
         }
         else
         {
             // Only update the vertex data.
             UpdateVertexBuffer();
             UpdateVerticesOnMesh();
-            UpdateMeshBounds();
         }
+
+        UpdateMeshBounds();
     }
 
     #endregion
 
-    #region Private properties and methods
+    #region Internal-use properties and methods
 
     int TriangleCount => 2 * _resolution.x * (_resolution.y - 1);
     int IndexCount => 3 * TriangleCount;
     int VertexCount => _resolution.x * _resolution.y;
+
+    void SetUpInternals()
+    {
+        if (_mesh == null)
+        {
+            _mesh = new Mesh();
+            _mesh.hideFlags = HideFlags.DontSave;
+
+            var meshFilter = GetComponent<MeshFilter>();
+
+            if (meshFilter == null)
+            {
+                meshFilter = gameObject.AddComponent<MeshFilter>();
+                meshFilter.hideFlags = HideFlags.DontSave | HideFlags.NotEditable;
+            }
+
+            meshFilter.sharedMesh = _mesh;
+        }
+    }
+
+    void ReleaseInternals()
+    {
+        if (_mesh != null)
+        {
+            if (Application.isPlaying)
+                Destroy(_mesh);
+            else
+                DestroyImmediate(_mesh);
+        }
+
+        _mesh = null;
+
+        DisposeBuffers();
+    }
 
     void UpdateMeshBounds()
     {
