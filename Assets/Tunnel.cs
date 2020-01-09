@@ -243,6 +243,8 @@ public sealed class Tunnel : MonoBehaviour
         [NativeDisableParallelForRestriction]
         [WriteOnly] public NativeArray<float3> buffer;
 
+        // Calculate a vertex position from polar coordinates and a
+        // displacement value.
         float3 Vertex(float2 polar, float disp)
         {
             var theta = math.PI * 2 * polar.x;
@@ -253,28 +255,38 @@ public sealed class Tunnel : MonoBehaviour
 
         public void Execute(int i)
         {
+            // Index -> Polar coodinates
             var polar = math.float2(
                 math.frac((float)i / resolution.x),
                 (float)(i / resolution.x) / resolution.y
             );
 
-            var npos = (polar + math.float2(1, 0)) * noiseRepeat;
-            var rep = math.float2(noiseRepeat, 1000);
+            // Polar coodinates -> Noise position
+            // The offset (1, 0) is needed for correct tiling.
+            var npos = (polar + math.float2(1, 0)) *
+                math.float2(1, depth / (math.PI * 2 * radius)) * noiseRepeat;
 
-            var psrdn = noise.psrdnoise(npos, rep, noiseRot) * noiseAmp;
+            // Noise field repeating period
+            var nrep = math.float2(noiseRepeat, 1000);
+
+            // Noise sample with analytical gradients
+            var psrdn = noise.psrdnoise(npos, nrep, noiseRot) * noiseAmp;
             var disp = psrdn.x;
             var grad = psrdn.yz;
 
+            // Vertex position
+            var V = Vertex(polar, disp);
+
+            // Normal calculation using the gradients
             var D = 0.001f;
             var Dp = D / noiseRepeat;
-
-            var V = Vertex(polar, disp);
             var Vdx0 = Vertex(polar - math.float2(Dp, 0), disp - grad.x * D);
             var Vdx1 = Vertex(polar + math.float2(Dp, 0), disp + grad.x * D);
             var Vdy0 = Vertex(polar - math.float2(0, Dp), disp - grad.y * D);
             var Vdy1 = Vertex(polar + math.float2(0, Dp), disp + grad.y * D);
             var N = math.normalize(math.cross(Vdx1 - Vdx0, Vdy1 - Vdy0));
 
+            // Output
             buffer[i * 2 + 0] = V;
             buffer[i * 2 + 1] = -N;
         }
