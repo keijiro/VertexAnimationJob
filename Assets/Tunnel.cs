@@ -213,19 +213,15 @@ public sealed class Tunnel : MonoBehaviour
 
     void UpdateVertexBuffer()
     {
-        // Animation parameters
-        var t = Time.time * _noiseAnimation;
-        var t0 = math.floor(t);
-        var tp = math.smoothstep(0, 1, math.frac(t));
-
         // Job object
         var job = new VertexUpdateJob{
+            rotation = Time.time * 0.3f,
             resolution = _resolution,
             radius = _radius,
             depth = _depth,
             noiseRepeat = _noiseRepeat,
-            noiseOffs = math.float2(t0, t0 + 1) * 33,
-            noiseAmp = math.float2(1 - tp, tp) * _noiseAmplitude,
+            noiseAmp = _noiseAmplitude,
+            noiseRot = Time.time * _noiseAnimation,
             buffer = _vertexBuffer
         };
 
@@ -236,12 +232,13 @@ public sealed class Tunnel : MonoBehaviour
     [Unity.Burst.BurstCompile(CompileSynchronously = true)]
     struct VertexUpdateJob : IJobParallelFor
     {
+        [ReadOnly] public float rotation;
         [ReadOnly] public int2 resolution;
         [ReadOnly] public float radius;
         [ReadOnly] public float depth;
         [ReadOnly] public float noiseRepeat;
-        [ReadOnly] public float2 noiseOffs;
-        [ReadOnly] public float2 noiseAmp;
+        [ReadOnly] public float noiseAmp;
+        [ReadOnly] public float noiseRot;
 
         [NativeDisableParallelForRestriction]
         [WriteOnly] public NativeArray<float3> buffer;
@@ -261,15 +258,12 @@ public sealed class Tunnel : MonoBehaviour
                 (float)(i / resolution.x) / resolution.y
             );
 
-            var npos1 = (polar + math.float2(0, noiseOffs.x)) * noiseRepeat;
-            var npos2 = (polar + math.float2(0, noiseOffs.y)) * noiseRepeat;
+            var npos = (polar + math.float2(1, 0)) * noiseRepeat;
             var rep = math.float2(noiseRepeat, 1000);
 
-            var noise12 = noise.psrdnoise(npos1, rep) * noiseAmp.x +
-                          noise.psrdnoise(npos2, rep) * noiseAmp.y;
-
-            var disp = noise12.x;
-            var grad = noise12.yz;
+            var psrdn = noise.psrdnoise(npos, rep, noiseRot) * noiseAmp;
+            var disp = psrdn.x;
+            var grad = psrdn.yz;
 
             var D = 0.001f;
             var Dp = D / noiseRepeat;
