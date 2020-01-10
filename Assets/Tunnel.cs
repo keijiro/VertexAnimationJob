@@ -3,7 +3,7 @@
 // https://github.com/keijiro/VertexAnimationJob
 //
 
-//#define USE_NEW_API
+// #define USE_NEW_API
 
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -12,6 +12,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 [ExecuteInEditMode, RequireComponent(typeof(MeshRenderer))]
 public sealed class Tunnel : MonoBehaviour
@@ -67,6 +68,8 @@ public sealed class Tunnel : MonoBehaviour
     {
         SetUpInternals();
 
+        var sw = Stopwatch.StartNew();
+
         if (_indexBuffer.Length != IndexCount)
         {
             // Mesh reallocation and reconstruction
@@ -84,6 +87,8 @@ public sealed class Tunnel : MonoBehaviour
         }
 
         UpdateMeshBounds();
+
+        UnityEngine.Debug.Log(sw.Elapsed.TotalMilliseconds);
     }
 
     #endregion
