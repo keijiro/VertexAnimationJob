@@ -36,6 +36,9 @@ public sealed class Tunnel : MonoBehaviour
 
     Mesh _mesh;
 
+    Mesh.MeshDataArray _meshDataArray;
+    JobHandle _previousJobs;
+
     #endregion
 
     #region MonoBehaviour implementation
@@ -54,8 +57,12 @@ public sealed class Tunnel : MonoBehaviour
     void Update()
     {
         SetUpInternals();
-        GenerateMesh();
+
+        _previousJobs.Complete();
+        if (_meshDataArray.Length > 0) ApplyMeshData();
         UpdateMeshBounds();
+
+        ScheduleMeshDataJobs();
     }
 
     #endregion
@@ -87,6 +94,10 @@ public sealed class Tunnel : MonoBehaviour
 
     void ReleaseInternals()
     {
+        _previousJobs.Complete();
+
+        if (_meshDataArray.Length > 0) _meshDataArray.Dispose();
+
         if (_mesh != null)
         {
             if (Application.isPlaying)
@@ -108,10 +119,10 @@ public sealed class Tunnel : MonoBehaviour
 
     #region Mesh object operations
 
-    void GenerateMesh()
+    void ScheduleMeshDataJobs()
     {
-        var dataArray = Mesh.AllocateWritableMeshData(1);
-        var data = dataArray[0];
+        _meshDataArray = Mesh.AllocateWritableMeshData(1);
+        var data = _meshDataArray[0];
 
         data.SetVertexBufferParams(
             VertexCount,
@@ -124,12 +135,19 @@ public sealed class Tunnel : MonoBehaviour
 
         var vd = data.GetVertexData<float3>();
         var id = data.GetIndexData<int>();
-        ScheduleIndexJob(id, ScheduleVertexJob(vd)).Complete();
+        _previousJobs = ScheduleIndexJob(id, ScheduleVertexJob(vd));
+
+        JobHandle.ScheduleBatchedJobs();
+    }
+
+    void ApplyMeshData()
+    {
+        var data = _meshDataArray[0];
 
         data.subMeshCount = 1;
         data.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
 
-        Mesh.ApplyAndDisposeWritableMeshData(dataArray, _mesh);
+        Mesh.ApplyAndDisposeWritableMeshData(_meshDataArray, _mesh);
     }
 
     #endregion
