@@ -35,8 +35,6 @@ public sealed class Tunnel : MonoBehaviour
     #region Internal objects
 
     Mesh _mesh;
-    NativeArray<int> _indexBuffer;
-    NativeArray<float3> _vertexBuffer;
 
     #endregion
 
@@ -56,23 +54,7 @@ public sealed class Tunnel : MonoBehaviour
     void Update()
     {
         SetUpInternals();
-
-        if (_indexBuffer.Length != IndexCount)
-        {
-            // Mesh reallocation and reconstruction
-            _mesh.Clear();
-            DisposeBuffers();
-            AllocateBuffers();
-            UpdateVertexBuffer();
-            InitializeMesh();
-        }
-        else
-        {
-            // Only update the vertex data.
-            UpdateVertexBuffer();
-            UpdateVerticesOnMesh();
-        }
-
+        GenerateMesh();
         UpdateMeshBounds();
     }
 
@@ -114,8 +96,6 @@ public sealed class Tunnel : MonoBehaviour
         }
 
         _mesh = null;
-
-        DisposeBuffers();
     }
 
     void UpdateMeshBounds()
@@ -126,94 +106,92 @@ public sealed class Tunnel : MonoBehaviour
 
     #endregion
 
-    #region Index/vertex buffer operations
-
-    void AllocateBuffers()
-    {
-        _indexBuffer = new NativeArray<int>(
-            IndexCount, Allocator.Persistent,
-            NativeArrayOptions.UninitializedMemory
-        );
-
-        _vertexBuffer = new NativeArray<float3>(
-            VertexCount * 2, Allocator.Persistent,
-            NativeArrayOptions.UninitializedMemory
-        );
-
-        InitializeIndexArray();
-    }
-
-    void DisposeBuffers()
-    {
-        if (_indexBuffer.IsCreated) _indexBuffer.Dispose();
-        if (_vertexBuffer.IsCreated) _vertexBuffer.Dispose();
-    }
-
-    void InitializeIndexArray()
-    {
-        var offs = 0;
-        var index = 0;
-
-        for (var ring = 0; ring < _resolution.y - 1; ring++)
-        {
-            for (var i = 0; i < _resolution.x - 1; i++)
-            {
-                _indexBuffer[offs++] = index;
-                _indexBuffer[offs++] = index + _resolution.x;
-                _indexBuffer[offs++] = index + 1;
-
-                _indexBuffer[offs++] = index + 1;
-                _indexBuffer[offs++] = index + _resolution.x;
-                _indexBuffer[offs++] = index + _resolution.x + 1;
-
-                index++;
-            }
-
-            _indexBuffer[offs++] = index;
-            _indexBuffer[offs++] = index + _resolution.x;
-            _indexBuffer[offs++] = index - _resolution.x + 1;
-
-            _indexBuffer[offs++] = index - _resolution.x + 1;
-            _indexBuffer[offs++] = index + _resolution.x;
-            _indexBuffer[offs++] = index + 1;
-
-            index++;
-        }
-    }
-
-    #endregion
-
     #region Mesh object operations
 
-    void InitializeMesh()
+    void GenerateMesh()
     {
-        _mesh.SetVertexBufferParams(
+        var dataArray = Mesh.AllocateWritableMeshData(1);
+        var data = dataArray[0];
+
+        data.SetVertexBufferParams(
             VertexCount,
             new VertexAttributeDescriptor
                 (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
             new VertexAttributeDescriptor
                 (VertexAttribute.Normal, VertexAttributeFormat.Float32, 3)
         );
-        _mesh.SetVertexBufferData(_vertexBuffer, 0, 0, VertexCount * 2);
+        data.SetIndexBufferParams(IndexCount, IndexFormat.UInt32);
 
-        _mesh.SetIndexBufferParams(IndexCount, IndexFormat.UInt32);
-        _mesh.SetIndexBufferData(_indexBuffer, 0, 0, IndexCount);
+        var vd = data.GetVertexData<float3>();
+        var id = data.GetIndexData<int>();
+        ScheduleIndexJob(id, ScheduleVertexJob(vd)).Complete();
 
-        _mesh.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
+        data.subMeshCount = 1;
+        data.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
+
+        Mesh.ApplyAndDisposeWritableMeshData(dataArray, _mesh);
     }
 
-    void UpdateVerticesOnMesh()
+    #endregion
+
+    #region Jobified index array generation
+
+    JobHandle ScheduleIndexJob(NativeArray<int> buffer, JobHandle dep)
     {
-        _mesh.SetVertexBufferData(_vertexBuffer, 0, 0, VertexCount * 2);
+        var job = new IndexUpdateJob()
+        {
+            resolution = _resolution,
+            buffer = buffer
+        };
+
+        return job.Schedule(dep);
+    }
+
+    [Unity.Burst.BurstCompile(CompileSynchronously = true)]
+    struct IndexUpdateJob : IJob
+    {
+        [ReadOnly] public int2 resolution;
+        [WriteOnly] public NativeArray<int> buffer;
+
+        public void Execute()
+        {
+            var offs = 0;
+            var index = 0;
+
+            for (var ring = 0; ring < resolution.y - 1; ring++)
+            {
+                for (var i = 0; i < resolution.x - 1; i++)
+                {
+                    buffer[offs++] = index;
+                    buffer[offs++] = index + resolution.x;
+                    buffer[offs++] = index + 1;
+
+                    buffer[offs++] = index + 1;
+                    buffer[offs++] = index + resolution.x;
+                    buffer[offs++] = index + resolution.x + 1;
+
+                    index++;
+                }
+
+                buffer[offs++] = index;
+                buffer[offs++] = index + resolution.x;
+                buffer[offs++] = index - resolution.x + 1;
+
+                buffer[offs++] = index - resolution.x + 1;
+                buffer[offs++] = index + resolution.x;
+                buffer[offs++] = index + 1;
+
+                index++;
+            }
+        }
     }
 
     #endregion
 
     #region Jobified vertex animation
 
-    void UpdateVertexBuffer()
+    JobHandle ScheduleVertexJob(NativeArray<float3> buffer)
     {
-        // Job object
         var job = new VertexUpdateJob{
             rotation = Time.time * 0.3f,
             resolution = _resolution,
@@ -222,11 +200,10 @@ public sealed class Tunnel : MonoBehaviour
             noiseRepeat = _noiseRepeat,
             noiseAmp = _noiseAmplitude,
             noiseRot = Time.time * _noiseAnimation,
-            buffer = _vertexBuffer
+            buffer = buffer
         };
 
-        // Run and wait until completed
-        job.Schedule((int)VertexCount, 64).Complete();
+        return job.Schedule((int)VertexCount, 64);
     }
 
     [Unity.Burst.BurstCompile(CompileSynchronously = true)]
@@ -240,8 +217,8 @@ public sealed class Tunnel : MonoBehaviour
         [ReadOnly] public float noiseAmp;
         [ReadOnly] public float noiseRot;
 
-        [NativeDisableParallelForRestriction]
-        [WriteOnly] public NativeArray<float3> buffer;
+        [NativeDisableParallelForRestriction, WriteOnly]
+        public NativeArray<float3> buffer;
 
         // Calculate a vertex position from polar coordinates and a
         // displacement value.
