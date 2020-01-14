@@ -25,7 +25,6 @@ public sealed class Lattice : MonoBehaviour
     {
         _resolution = math.max(_resolution, math.int2(3, 3));
         _extent = math.max(_extent, float2.zero);
-        _noiseFrequency = math.max(_noiseFrequency, 1);
     }
 
     #endregion
