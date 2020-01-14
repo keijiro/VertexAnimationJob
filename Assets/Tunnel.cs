@@ -8,9 +8,8 @@ using UnityEngine.Rendering;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using Random = Unity.Mathematics.Random;
 
-[ExecuteInEditMode, RequireComponent(typeof(MeshRenderer))]
+[ExecuteInEditMode]
 public sealed class Tunnel : MonoBehaviour
 {
     #region Editable attributes
@@ -21,6 +20,7 @@ public sealed class Tunnel : MonoBehaviour
     [SerializeField] int _noiseRepeat = 6;
     [SerializeField] float _noiseAmplitude = 0.1f;
     [SerializeField] float _noiseAnimation = 0.5f;
+    [SerializeField] Material _material = null;
 
     void OnValidate()
     {
@@ -74,6 +74,8 @@ public sealed class Tunnel : MonoBehaviour
         }
 
         UpdateMeshBounds();
+
+        Graphics.DrawMesh(_mesh, transform.localToWorldMatrix, _material, gameObject.layer);
     }
 
     #endregion
@@ -90,16 +92,6 @@ public sealed class Tunnel : MonoBehaviour
         {
             _mesh = new Mesh();
             _mesh.hideFlags = HideFlags.DontSave;
-
-            var meshFilter = GetComponent<MeshFilter>();
-
-            if (meshFilter == null)
-            {
-                meshFilter = gameObject.AddComponent<MeshFilter>();
-                meshFilter.hideFlags = HideFlags.DontSave | HideFlags.NotEditable;
-            }
-
-            meshFilter.sharedMesh = _mesh;
         }
     }
 
