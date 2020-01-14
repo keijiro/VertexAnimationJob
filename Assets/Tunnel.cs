@@ -71,17 +71,9 @@ public sealed class Tunnel : MonoBehaviour
 
     #endregion
 
-    #region Internal-use properties and methods
-
-    int TriangleCount => 2 * _resolution.x * (_resolution.y - 1);
-    int IndexCount => 3 * TriangleCount;
-    int VertexCount => _resolution.x * _resolution.y;
-
-    #endregion
-
     #region Mesh object operations
 
-    void ResetMesh(NativeArray<float3> vertexArray)
+    void ResetMesh(NativeArray<Vertex> vertexArray)
     {
         if (_mesh == null)
         {
@@ -94,28 +86,27 @@ public sealed class Tunnel : MonoBehaviour
         }
 
         _mesh.SetVertexBufferParams(
-            VertexCount,
+            vertexArray.Length,
             new VertexAttributeDescriptor
                 (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
             new VertexAttributeDescriptor
                 (VertexAttribute.Normal, VertexAttributeFormat.Float32, 3)
         );
-        _mesh.SetVertexBufferData(vertexArray, 0, 0, VertexCount * 2);
+        _mesh.SetVertexBufferData(vertexArray, 0, 0, vertexArray.Length);
 
         using (var indexArray = CreateIndexArray())
         {
-            _mesh.SetIndexBufferParams(IndexCount, IndexFormat.UInt32);
-            _mesh.SetIndexBufferData(indexArray, 0, 0, IndexCount);
+            _mesh.SetIndexBufferParams(indexArray.Length, IndexFormat.UInt32);
+            _mesh.SetIndexBufferData(indexArray, 0, 0, indexArray.Length);
+            _mesh.SetSubMesh(0, new SubMeshDescriptor(0, indexArray.Length));
         }
-
-        _mesh.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
 
         _meshResolution = _resolution;
     }
 
-    void UpdateVerticesOnMesh(NativeArray<float3> vertexArray)
+    void UpdateVerticesOnMesh(NativeArray<Vertex> vertexArray)
     {
-        _mesh.SetVertexBufferData(vertexArray, 0, 0, VertexCount * 2);
+        _mesh.SetVertexBufferData(vertexArray, 0, 0, vertexArray.Length);
     }
 
     void UpdateMeshBounds()
@@ -131,8 +122,8 @@ public sealed class Tunnel : MonoBehaviour
     NativeArray<int> CreateIndexArray()
     {
         var buffer = new NativeArray<int>(
-            IndexCount, Allocator.Temp,
-            NativeArrayOptions.UninitializedMemory
+            2 * _resolution.x * (_resolution.y - 1) * 3,
+            Allocator.Temp, NativeArrayOptions.UninitializedMemory
         );
 
         var offs = 0;
@@ -171,11 +162,17 @@ public sealed class Tunnel : MonoBehaviour
 
     #region Jobified vertex animation
 
-    NativeArray<float3> CreateVertexArray()
+    struct Vertex
     {
-        var vertexArray = new NativeArray<float3>(
-            VertexCount * 2, Allocator.TempJob,
-            NativeArrayOptions.UninitializedMemory
+        public float3 position;
+        public float3 normal;
+    }
+
+    NativeArray<Vertex> CreateVertexArray()
+    {
+        var vertexArray = new NativeArray<Vertex>(
+            _resolution.x * _resolution.y,
+            Allocator.TempJob, NativeArrayOptions.UninitializedMemory
         );
 
         var job = new VertexUpdateJob{
@@ -189,7 +186,7 @@ public sealed class Tunnel : MonoBehaviour
             buffer = vertexArray
         };
 
-        job.Schedule((int)VertexCount, 64).Complete();
+        job.Schedule(vertexArray.Length, 64).Complete();
 
         return vertexArray;
     }
@@ -205,8 +202,7 @@ public sealed class Tunnel : MonoBehaviour
         [ReadOnly] public float noiseAmp;
         [ReadOnly] public float noiseRot;
 
-        [NativeDisableParallelForRestriction]
-        [WriteOnly] public NativeArray<float3> buffer;
+        [WriteOnly] public NativeArray<Vertex> buffer;
 
         // Calculate a vertex position from polar coordinates and a
         // displacement value.
@@ -252,8 +248,7 @@ public sealed class Tunnel : MonoBehaviour
             var N = math.normalize(math.cross(Vdx1 - Vdx0, Vdy1 - Vdy0));
 
             // Output
-            buffer[i * 2 + 0] = V;
-            buffer[i * 2 + 1] = -N;
+            buffer[i] = new Vertex { position = V, normal = -N };
         }
     }
 
