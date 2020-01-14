@@ -16,7 +16,7 @@ public sealed class Lattice : MonoBehaviour
 
     [SerializeField] int2 _resolution = math.int2(128, 128);
     [SerializeField] float2 _extent = math.float2(10, 10);
-    [SerializeField] int _noiseRepeat = 6;
+    [SerializeField] float _noiseFrequency = 1;
     [SerializeField] float _noiseAmplitude = 0.1f;
     [SerializeField] float _noiseAnimation = 0.5f;
     [SerializeField] Material _material = null;
@@ -25,7 +25,7 @@ public sealed class Lattice : MonoBehaviour
     {
         _resolution = math.max(_resolution, math.int2(3, 3));
         _extent = math.max(_extent, float2.zero);
-        _noiseRepeat = math.max(_noiseRepeat, 1);
+        _noiseFrequency = math.max(_noiseFrequency, 1);
     }
 
     #endregion
@@ -112,8 +112,8 @@ public sealed class Lattice : MonoBehaviour
 
     void UpdateMeshBounds()
     {
-        // TODO
-        _mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
+        var size = math.float3(_extent, _noiseAmplitude * 2);
+        _mesh.bounds = new Bounds(Vector3.zero, size);
     }
 
     #endregion
@@ -144,10 +144,10 @@ public sealed class Lattice : MonoBehaviour
 
     NativeArray<Vertex> CreateVertexArray()
     {
-        var triangleCount = 2 * (_resolution.x - 1) * (_resolution.y - 1);
+        var triangleCount = 2 * _resolution.x * _resolution.y;
 
         var points = new NativeArray<float3>(
-            _resolution.x * _resolution.y,
+            (_resolution.x + 1) * (_resolution.y + 1),
             Allocator.TempJob, NativeArrayOptions.UninitializedMemory
         );
 
@@ -160,7 +160,7 @@ public sealed class Lattice : MonoBehaviour
             rotation = Time.time * 0.3f,
             resolution = _resolution,
             extent = _extent,
-            noiseRepeat = _noiseRepeat,
+            noiseFreq = _noiseFrequency,
             noiseAmp = _noiseAmplitude,
             noiseRot = Time.time * _noiseAnimation,
             output = points
@@ -187,7 +187,7 @@ public sealed class Lattice : MonoBehaviour
         [ReadOnly] public float rotation;
         [ReadOnly] public int2 resolution;
         [ReadOnly] public float2 extent;
-        [ReadOnly] public float noiseRepeat;
+        [ReadOnly] public float noiseFreq;
         [ReadOnly] public float noiseAmp;
         [ReadOnly] public float noiseRot;
 
@@ -195,10 +195,15 @@ public sealed class Lattice : MonoBehaviour
 
         public void Execute(int i)
         {
-            var idx = math.float2(i % resolution.x, i / resolution.x);
+            var columns = resolution.x + 1;
+            var row = i / columns;
+            var odd = (row & 1) != 1;
 
-            var p = (idx / resolution - 0.5f) * extent;
-            var z = noise.snoise(p * noiseRepeat) * noiseAmp;
+            var p = math.float2(i - row * columns, row);
+            p.x += odd ? -0.25f : +0.25f;
+            p = (p / resolution - 0.5f) * extent;
+
+            var z = noise.srnoise(p * noiseFreq, noiseRot) * noiseAmp;
 
             output[i] = math.float3(p, z);
         }
@@ -216,28 +221,44 @@ public sealed class Lattice : MonoBehaviour
         public void Execute(int i)
         {
             var it = i / 2;
-            var ix = it % (resolution.x - 1);
-            var iy = it / (resolution.x - 1);
+            var iy = it / resolution.x;
+            var ix = it - iy * resolution.x;
 
-            var idx1 = iy * resolution.x + ix;
-            var idx2 = idx1;
-            var idx3 = idx1;
+            var i1 = iy * (resolution.x + 1) + ix;
+            var i2 = i1;
+            var i3 = i1;
 
-            if ((i & 1) == 0)
+            if ((iy & 1) == 0)
             {
-                idx2 += 1;
-                idx3 += resolution.x;
+                if ((i & 1) == 0)
+                {
+                    i2 += resolution.x + 1;
+                    i3 += 1;
+                }
+                else
+                {
+                    i1 += resolution.x + 1;
+                    i2 += resolution.x + 2;
+                    i3 += 1;
+                }
             }
             else
             {
-                idx1 += resolution.x;
-                idx2 += 1;
-                idx3 += resolution.x + 1;
+                if ((i & 1) == 0)
+                {
+                    i2 += resolution.x + 1;
+                    i3 += resolution.x + 2;
+                }
+                else
+                {
+                    i2 += resolution.x + 2;
+                    i3 += 1;
+                }
             }
 
-            var V1 = points[idx1];
-            var V2 = points[idx2];
-            var V3 = points[idx3];
+            var V1 = points[i1];
+            var V2 = points[i2];
+            var V3 = points[i3];
 
             var N = math.normalize(math.cross(V2 - V1, V3 - V1));
 
