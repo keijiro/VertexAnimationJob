@@ -35,42 +35,33 @@ public sealed class Tunnel : MonoBehaviour
     #region Internal objects
 
     Mesh _mesh;
-    NativeArray<int> _indexBuffer;
-    NativeArray<float3> _vertexBuffer;
+    int2 _meshResolution;
 
     #endregion
 
     #region MonoBehaviour implementation
 
-    void OnDisable()
-    {
-        // Required in edit mode.
-        ReleaseInternals();
-    }
-
     void OnDestroy()
     {
-        ReleaseInternals();
+        if (_mesh != null)
+        {
+            if (Application.isPlaying)
+                Destroy(_mesh);
+            else
+                DestroyImmediate(_mesh);
+        }
+
+        _mesh = null;
     }
 
     void Update()
     {
-        SetUpInternals();
-
-        if (_indexBuffer.Length != IndexCount)
+        using (var vertexArray = CreateVertexArray())
         {
-            // Mesh reallocation and reconstruction
-            _mesh.Clear();
-            DisposeBuffers();
-            AllocateBuffers();
-            UpdateVertexBuffer();
-            InitializeMesh();
-        }
-        else
-        {
-            // Only update the vertex data.
-            UpdateVertexBuffer();
-            UpdateVerticesOnMesh();
+            if (_meshResolution.Equals(_resolution))
+                UpdateVerticesOnMesh(vertexArray);
+            else
+                ResetMesh(vertexArray);
         }
 
         UpdateMeshBounds();
@@ -86,28 +77,45 @@ public sealed class Tunnel : MonoBehaviour
     int IndexCount => 3 * TriangleCount;
     int VertexCount => _resolution.x * _resolution.y;
 
-    void SetUpInternals()
+    #endregion
+
+    #region Mesh object operations
+
+    void ResetMesh(NativeArray<float3> vertexArray)
     {
         if (_mesh == null)
         {
             _mesh = new Mesh();
             _mesh.hideFlags = HideFlags.DontSave;
         }
-    }
-
-    void ReleaseInternals()
-    {
-        if (_mesh != null)
+        else
         {
-            if (Application.isPlaying)
-                Destroy(_mesh);
-            else
-                DestroyImmediate(_mesh);
+            _mesh.Clear();
         }
 
-        _mesh = null;
+        _mesh.SetVertexBufferParams(
+            VertexCount,
+            new VertexAttributeDescriptor
+                (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+            new VertexAttributeDescriptor
+                (VertexAttribute.Normal, VertexAttributeFormat.Float32, 3)
+        );
+        _mesh.SetVertexBufferData(vertexArray, 0, 0, VertexCount * 2);
 
-        DisposeBuffers();
+        using (var indexArray = CreateIndexArray())
+        {
+            _mesh.SetIndexBufferParams(IndexCount, IndexFormat.UInt32);
+            _mesh.SetIndexBufferData(indexArray, 0, 0, IndexCount);
+        }
+
+        _mesh.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
+
+        _meshResolution = _resolution;
+    }
+
+    void UpdateVerticesOnMesh(NativeArray<float3> vertexArray)
+    {
+        _mesh.SetVertexBufferData(vertexArray, 0, 0, VertexCount * 2);
     }
 
     void UpdateMeshBounds()
@@ -118,31 +126,15 @@ public sealed class Tunnel : MonoBehaviour
 
     #endregion
 
-    #region Index/vertex buffer operations
+    #region Index array operations
 
-    void AllocateBuffers()
+    NativeArray<int> CreateIndexArray()
     {
-        _indexBuffer = new NativeArray<int>(
-            IndexCount, Allocator.Persistent,
+        var buffer = new NativeArray<int>(
+            IndexCount, Allocator.Temp,
             NativeArrayOptions.UninitializedMemory
         );
 
-        _vertexBuffer = new NativeArray<float3>(
-            VertexCount * 2, Allocator.Persistent,
-            NativeArrayOptions.UninitializedMemory
-        );
-
-        InitializeIndexArray();
-    }
-
-    void DisposeBuffers()
-    {
-        if (_indexBuffer.IsCreated) _indexBuffer.Dispose();
-        if (_vertexBuffer.IsCreated) _vertexBuffer.Dispose();
-    }
-
-    void InitializeIndexArray()
-    {
         var offs = 0;
         var index = 0;
 
@@ -150,62 +142,42 @@ public sealed class Tunnel : MonoBehaviour
         {
             for (var i = 0; i < _resolution.x - 1; i++)
             {
-                _indexBuffer[offs++] = index;
-                _indexBuffer[offs++] = index + _resolution.x;
-                _indexBuffer[offs++] = index + 1;
+                buffer[offs++] = index;
+                buffer[offs++] = index + _resolution.x;
+                buffer[offs++] = index + 1;
 
-                _indexBuffer[offs++] = index + 1;
-                _indexBuffer[offs++] = index + _resolution.x;
-                _indexBuffer[offs++] = index + _resolution.x + 1;
+                buffer[offs++] = index + 1;
+                buffer[offs++] = index + _resolution.x;
+                buffer[offs++] = index + _resolution.x + 1;
 
                 index++;
             }
 
-            _indexBuffer[offs++] = index;
-            _indexBuffer[offs++] = index + _resolution.x;
-            _indexBuffer[offs++] = index - _resolution.x + 1;
+            buffer[offs++] = index;
+            buffer[offs++] = index + _resolution.x;
+            buffer[offs++] = index - _resolution.x + 1;
 
-            _indexBuffer[offs++] = index - _resolution.x + 1;
-            _indexBuffer[offs++] = index + _resolution.x;
-            _indexBuffer[offs++] = index + 1;
+            buffer[offs++] = index - _resolution.x + 1;
+            buffer[offs++] = index + _resolution.x;
+            buffer[offs++] = index + 1;
 
             index++;
         }
-    }
 
-    #endregion
-
-    #region Mesh object operations
-
-    void InitializeMesh()
-    {
-        _mesh.SetVertexBufferParams(
-            VertexCount,
-            new VertexAttributeDescriptor
-                (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
-            new VertexAttributeDescriptor
-                (VertexAttribute.Normal, VertexAttributeFormat.Float32, 3)
-        );
-        _mesh.SetVertexBufferData(_vertexBuffer, 0, 0, VertexCount * 2);
-
-        _mesh.SetIndexBufferParams(IndexCount, IndexFormat.UInt32);
-        _mesh.SetIndexBufferData(_indexBuffer, 0, 0, IndexCount);
-
-        _mesh.SetSubMesh(0, new SubMeshDescriptor(0, IndexCount));
-    }
-
-    void UpdateVerticesOnMesh()
-    {
-        _mesh.SetVertexBufferData(_vertexBuffer, 0, 0, VertexCount * 2);
+        return buffer;
     }
 
     #endregion
 
     #region Jobified vertex animation
 
-    void UpdateVertexBuffer()
+    NativeArray<float3> CreateVertexArray()
     {
-        // Job object
+        var vertexArray = new NativeArray<float3>(
+            VertexCount * 2, Allocator.TempJob,
+            NativeArrayOptions.UninitializedMemory
+        );
+
         var job = new VertexUpdateJob{
             rotation = Time.time * 0.3f,
             resolution = _resolution,
@@ -214,11 +186,12 @@ public sealed class Tunnel : MonoBehaviour
             noiseRepeat = _noiseRepeat,
             noiseAmp = _noiseAmplitude,
             noiseRot = Time.time * _noiseAnimation,
-            buffer = _vertexBuffer
+            buffer = vertexArray
         };
 
-        // Run and wait until completed
         job.Schedule((int)VertexCount, 64).Complete();
+
+        return vertexArray;
     }
 
     [Unity.Burst.BurstCompile(CompileSynchronously = true)]
