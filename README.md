@@ -1,3 +1,5 @@
+![gif](https://i.imgur.com/TI1mh24.gif)
+
 **VertexAnimationJob** is a Unity project that contains examples of the use of
 the new Mesh API added in Unity 2019.3/2020.1.
 
