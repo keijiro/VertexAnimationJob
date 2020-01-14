@@ -202,9 +202,10 @@ public sealed class Lattice : MonoBehaviour
             p.x += odd ? -0.25f : +0.25f;
             p = (p / resolution - 0.5f) * extent;
 
-            var z = noise.srnoise(p * noiseFreq, noiseRot) * noiseAmp;
+            var z = noise.srnoise(p * noiseFreq, noiseRot);
+            z += noise.srnoise(p * noiseFreq * 2, noiseRot) * 0.5f;
 
-            output[i] = math.float3(p, z);
+            output[i] = math.float3(p, z * noiseAmp);
         }
     }
 
