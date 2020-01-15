@@ -17,6 +17,7 @@ public sealed class Lattice : MonoBehaviour
     [SerializeField] int2 _resolution = math.int2(128, 128);
     [SerializeField] float2 _extent = math.float2(10, 10);
     [SerializeField] float _noiseFrequency = 1;
+    [SerializeField, Range(1, 8)] int _noiseOctave = 2;
     [SerializeField] float _noiseAmplitude = 0.1f;
     [SerializeField] float _noiseAnimation = 0.5f;
     [SerializeField] Material _material = null;
@@ -160,6 +161,7 @@ public sealed class Lattice : MonoBehaviour
             resolution = _resolution,
             extent = _extent,
             noiseFreq = _noiseFrequency,
+            noiseOct = _noiseOctave,
             noiseAmp = _noiseAmplitude,
             noiseRot = Time.time * _noiseAnimation,
             output = points
@@ -187,6 +189,7 @@ public sealed class Lattice : MonoBehaviour
         [ReadOnly] public int2 resolution;
         [ReadOnly] public float2 extent;
         [ReadOnly] public float noiseFreq;
+        [ReadOnly] public int noiseOct;
         [ReadOnly] public float noiseAmp;
         [ReadOnly] public float noiseRot;
 
@@ -202,8 +205,16 @@ public sealed class Lattice : MonoBehaviour
             p.x += odd ? -0.25f : +0.25f;
             p = (p / resolution - 0.5f) * extent;
 
-            var z = noise.srnoise(p * noiseFreq, noiseRot);
-            z += noise.srnoise(p * noiseFreq * 2, noiseRot) * 0.5f;
+            var np = (p + extent) * noiseFreq;
+            var nw = 1.0f;
+            var z = 0.0f;
+
+            for (var lv = 0; lv < noiseOct; lv++)
+            {
+                z += noise.srnoise(np, noiseRot) * nw;
+                np *= 2;
+                nw *= 0.5f;
+            }
 
             output[i] = math.float3(p, z * noiseAmp);
         }
