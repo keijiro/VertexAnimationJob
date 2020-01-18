@@ -88,7 +88,7 @@ public sealed class Tunnel : MonoBehaviour
         _mesh.SetVertexBufferParams(
             vertexArray.Length,
             new VertexAttributeDescriptor
-                (VertexAttribute.Position, VertexAttributeFormat.Float32, 4),
+                (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
             new VertexAttributeDescriptor
                 (VertexAttribute.Normal, VertexAttributeFormat.SNorm16, 4)
         );
@@ -164,8 +164,8 @@ public sealed class Tunnel : MonoBehaviour
 
     struct Vertex
     {
-        public float4 position;
-        public ulong normal;
+        public float3 position;
+        public SNorm16x4 normal;
     }
 
     NativeArray<Vertex> CreateVertexArray()
@@ -203,13 +203,6 @@ public sealed class Tunnel : MonoBehaviour
         [ReadOnly] public float noiseRot;
 
         [WriteOnly] public NativeArray<Vertex> buffer;
-
-        static ulong SNorm16x4(float3 v)
-        {
-            var vi = math.clamp(v, -1, 1) * 0x7fff;
-            var x = (ushort)vi.x; var y = (ushort)vi.y; var z = (ushort)vi.z;
-            return (ulong)x | ((ulong)y << 16) | ((ulong)z << 32);
-        }
 
         // Calculate a vertex position from polar coordinates and a
         // displacement value.
@@ -255,10 +248,7 @@ public sealed class Tunnel : MonoBehaviour
             var N = math.normalize(math.cross(Vdx1 - Vdx0, Vdy1 - Vdy0));
 
             // Output
-            buffer[i] = new Vertex {
-                position = math.float4(V, 1),
-                normal = SNorm16x4(-N)
-            };
+            buffer[i] = new Vertex { position = V, normal = -N };
         }
     }
 

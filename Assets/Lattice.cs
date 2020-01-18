@@ -88,7 +88,7 @@ public sealed class Lattice : MonoBehaviour
         _mesh.SetVertexBufferParams(
             vertexCount,
             new VertexAttributeDescriptor
-                (VertexAttribute.Position, VertexAttributeFormat.Float32, 4),
+                (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
             new VertexAttributeDescriptor
                 (VertexAttribute.Normal, VertexAttributeFormat.SNorm16, 4)
         );
@@ -138,8 +138,8 @@ public sealed class Lattice : MonoBehaviour
 
     struct Vertex
     {
-        public float4 position;
-        public ulong normal;
+        public float3 position;
+        public SNorm16x4 normal;
     }
 
     NativeArray<Vertex> CreateVertexArray()
@@ -229,13 +229,6 @@ public sealed class Lattice : MonoBehaviour
         [NativeDisableParallelForRestriction]
         [WriteOnly] public NativeArray<Vertex> output;
 
-        static ulong SNorm16x4(float3 v)
-        {
-            var vi = math.clamp(v, -1, 1) * 0x7fff;
-            var x = (ushort)vi.x; var y = (ushort)vi.y; var z = (ushort)vi.z;
-            return (ulong)x | ((ulong)y << 16) | ((ulong)z << 32);
-        }
-
         public void Execute(int i)
         {
             var it = i / 2;
@@ -278,11 +271,11 @@ public sealed class Lattice : MonoBehaviour
             var V2 = points[i2];
             var V3 = points[i3];
 
-            var N = SNorm16x4(math.normalize(math.cross(V2 - V1, V3 - V1)));
+            var N = (SNorm16x4)math.normalize(math.cross(V2 - V1, V3 - V1));
 
-            output[i * 3 + 0] = new Vertex { position = math.float4(V1, 1), normal = N };
-            output[i * 3 + 1] = new Vertex { position = math.float4(V2, 1), normal = N };
-            output[i * 3 + 2] = new Vertex { position = math.float4(V3, 1), normal = N };
+            output[i * 3 + 0] = new Vertex { position = V1, normal = N };
+            output[i * 3 + 1] = new Vertex { position = V2, normal = N };
+            output[i * 3 + 2] = new Vertex { position = V3, normal = N };
         }
     }
 
