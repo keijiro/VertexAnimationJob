@@ -88,15 +88,15 @@ public sealed class Tunnel : MonoBehaviour
         _mesh.SetVertexBufferParams(
             vertexArray.Length,
             new VertexAttributeDescriptor
-                (VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+                (VertexAttribute.Position, VertexAttributeFormat.Float32, 4),
             new VertexAttributeDescriptor
-                (VertexAttribute.Normal, VertexAttributeFormat.Float32, 3)
+                (VertexAttribute.Normal, VertexAttributeFormat.SNorm16, 4)
         );
         _mesh.SetVertexBufferData(vertexArray, 0, 0, vertexArray.Length);
 
         using (var indexArray = CreateIndexArray())
         {
-            _mesh.SetIndexBufferParams(indexArray.Length, IndexFormat.UInt32);
+            _mesh.SetIndexBufferParams(indexArray.Length, IndexFormat.UInt16);
             _mesh.SetIndexBufferData(indexArray, 0, 0, indexArray.Length);
             _mesh.SetSubMesh(0, new SubMeshDescriptor(0, indexArray.Length));
         }
@@ -119,9 +119,9 @@ public sealed class Tunnel : MonoBehaviour
 
     #region Index array operations
 
-    NativeArray<int> CreateIndexArray()
+    NativeArray<ushort> CreateIndexArray()
     {
-        var buffer = new NativeArray<int>(
+        var buffer = new NativeArray<ushort>(
             2 * _resolution.x * (_resolution.y - 1) * 3,
             Allocator.Temp, NativeArrayOptions.UninitializedMemory
         );
@@ -133,24 +133,24 @@ public sealed class Tunnel : MonoBehaviour
         {
             for (var i = 0; i < _resolution.x - 1; i++)
             {
-                buffer[offs++] = index;
-                buffer[offs++] = index + _resolution.x;
-                buffer[offs++] = index + 1;
+                buffer[offs++] = (ushort)(index);
+                buffer[offs++] = (ushort)(index + _resolution.x);
+                buffer[offs++] = (ushort)(index + 1);
 
-                buffer[offs++] = index + 1;
-                buffer[offs++] = index + _resolution.x;
-                buffer[offs++] = index + _resolution.x + 1;
+                buffer[offs++] = (ushort)(index + 1);
+                buffer[offs++] = (ushort)(index + _resolution.x);
+                buffer[offs++] = (ushort)(index + _resolution.x + 1);
 
                 index++;
             }
 
-            buffer[offs++] = index;
-            buffer[offs++] = index + _resolution.x;
-            buffer[offs++] = index - _resolution.x + 1;
+            buffer[offs++] = (ushort)(index);
+            buffer[offs++] = (ushort)(index + _resolution.x);
+            buffer[offs++] = (ushort)(index - _resolution.x + 1);
 
-            buffer[offs++] = index - _resolution.x + 1;
-            buffer[offs++] = index + _resolution.x;
-            buffer[offs++] = index + 1;
+            buffer[offs++] = (ushort)(index - _resolution.x + 1);
+            buffer[offs++] = (ushort)(index + _resolution.x);
+            buffer[offs++] = (ushort)(index + 1);
 
             index++;
         }
@@ -164,8 +164,8 @@ public sealed class Tunnel : MonoBehaviour
 
     struct Vertex
     {
-        public float3 position;
-        public float3 normal;
+        public float4 position;
+        public ulong normal;
     }
 
     NativeArray<Vertex> CreateVertexArray()
@@ -203,6 +203,13 @@ public sealed class Tunnel : MonoBehaviour
         [ReadOnly] public float noiseRot;
 
         [WriteOnly] public NativeArray<Vertex> buffer;
+
+        static ulong SNorm16x4(float3 v)
+        {
+            var vi = math.clamp(v, -1, 1) * 0x7fff;
+            var x = (ushort)vi.x; var y = (ushort)vi.y; var z = (ushort)vi.z;
+            return (ulong)x | ((ulong)y << 16) | ((ulong)z << 32);
+        }
 
         // Calculate a vertex position from polar coordinates and a
         // displacement value.
@@ -248,7 +255,10 @@ public sealed class Tunnel : MonoBehaviour
             var N = math.normalize(math.cross(Vdx1 - Vdx0, Vdy1 - Vdy0));
 
             // Output
-            buffer[i] = new Vertex { position = V, normal = -N };
+            buffer[i] = new Vertex {
+                position = math.float4(V, 1),
+                normal = SNorm16x4(-N)
+            };
         }
     }
 
